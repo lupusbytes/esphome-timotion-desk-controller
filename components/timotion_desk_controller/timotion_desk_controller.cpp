@@ -8,7 +8,10 @@ namespace timotion_desk_controller {
 
 static const char *TAG = "timotion_desk_controller";
 
-static const float DESK_MIN_HEIGHT = 65;
+// Lowest physical desk height (cm) for your model.
+// Using 71 so that 71 cm maps to position 0.0 and
+// the "close" command (target 0%) can be satisfied.
+static const float DESK_MIN_HEIGHT = 71;
 static const float DESK_MAX_HEIGHT = 130;
 
 static float transform_height_to_position(float height) {
