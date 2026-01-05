@@ -172,16 +172,18 @@ cover::CoverTraits TimotionDeskControllerComponent::get_traits() {
 
 void TimotionDeskControllerComponent::publish_cover_state_(uint8_t *value, uint16_t value_len) {
   std::vector<uint8_t> x(value, value + value_len);
-
-  if (value_len < 4) {
+  
+  // Only process frames that indicate the desk is actively moving.
+  // According to your capture:
+  //   x[1] == 0x01 -> moving, x[1] == 0x02 -> idle
+  if (value_len < 8 || x[1] != 0x01) {
     return;
   }
 
-  // Align parsing with the BLE client sensors defined in YAML:
-  // - Height is taken from x[3] (in cm)
-  // - Motion/state is taken from x[1] (65 = down, 66 = up, other = idle)
-  uint16_t height = x[3];
-  uint16_t speed = x[1];
+  // Height is encoded in millimetres in x[6:7]; divide by 10 to get cm.
+  uint16_t height = (((uint16_t) x[6] << 8) | x[7]) / 10;
+  // Direction/status byte: 0x65 (101) = down, 0x55 (85) = up, 0x05 (5) = idle.
+  uint16_t speed = x[4];
 
   if (this->lastHeight == height && this->lastSpeed == speed)
     return;
@@ -189,14 +191,14 @@ void TimotionDeskControllerComponent::publish_cover_state_(uint8_t *value, uint1
   this->lastHeight = height;
   this->lastSpeed = speed;
 
-  float position = transform_height_to_position(static_cast<float>(height));
+  float position = transform_height_to_position((float) height);
   ESP_LOGCONFIG(TAG, "publish %d %d %f %f", speed, height, position, this->position);
 
-  if (speed == 65) {
+  if (speed == 101) {           // 0x65: moving down
     this->current_operation = cover::COVER_OPERATION_CLOSING;
-  } else if (speed == 66) {
+  } else if (speed == 85) {     // 0x55: moving up
     this->current_operation = cover::COVER_OPERATION_OPENING;
-  } else {
+  } else if (speed == 5) {      // 0x05: idle
     this->current_operation = cover::COVER_OPERATION_IDLE;
   }
 
