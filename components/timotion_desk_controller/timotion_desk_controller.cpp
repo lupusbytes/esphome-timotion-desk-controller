@@ -172,31 +172,36 @@ cover::CoverTraits TimotionDeskControllerComponent::get_traits() {
 
 void TimotionDeskControllerComponent::publish_cover_state_(uint8_t *value, uint16_t value_len) {
   std::vector<uint8_t> x(value, value + value_len);
-  
-  // Check if desk is moving
-  if (x[1] == 1) {
-    uint16_t height = (((uint16_t)x[6] << 8) | x[7]) / 10;
-    uint16_t speed = x[4];
 
-    if (this->lastHeight == height && this->lastSpeed == speed) return; 
-    this->lastHeight = height;
-    this->lastSpeed = speed;
-  
-    float position = transform_height_to_position((float) height);
-    ESP_LOGCONFIG(TAG, "publish %d %d %d %d", speed, height, position, this->position);
-  
-    //   if (speed == 40) {
-    if (speed == 101) {
-      this->current_operation = cover::COVER_OPERATION_CLOSING;
-    } else if (speed == 85) {
-      this->current_operation = cover::COVER_OPERATION_OPENING;
-    } else if (speed == 5) {
-      this->current_operation = cover::COVER_OPERATION_IDLE;
-    }
-  
-    this->position = position;
-    this->publish_state(false);
+  if (value_len < 4) {
+    return;
   }
+
+  // Align parsing with the BLE client sensors defined in YAML:
+  // - Height is taken from x[3] (in cm)
+  // - Motion/state is taken from x[1] (65 = down, 66 = up, other = idle)
+  uint16_t height = x[3];
+  uint16_t speed = x[1];
+
+  if (this->lastHeight == height && this->lastSpeed == speed)
+    return;
+
+  this->lastHeight = height;
+  this->lastSpeed = speed;
+
+  float position = transform_height_to_position(static_cast<float>(height));
+  ESP_LOGCONFIG(TAG, "publish %d %d %f %f", speed, height, position, this->position);
+
+  if (speed == 65) {
+    this->current_operation = cover::COVER_OPERATION_CLOSING;
+  } else if (speed == 66) {
+    this->current_operation = cover::COVER_OPERATION_OPENING;
+  } else {
+    this->current_operation = cover::COVER_OPERATION_IDLE;
+  }
+
+  this->position = position;
+  this->publish_state(false);
 }
 
 void TimotionDeskControllerComponent::move_desk_() {
