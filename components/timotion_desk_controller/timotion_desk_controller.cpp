@@ -25,7 +25,7 @@ void TimotionDeskControllerComponent::setup() {
 
 void TimotionDeskControllerComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "Timotion Desk Controller:");
-  ESP_LOGCONFIG(TAG, "  MAC address        : %s", this->parent()->address_str().c_str());
+  ESP_LOGCONFIG(TAG, "  MAC address        : %s", this->parent()->address_str());
   ESP_LOGCONFIG(TAG, "  Notifications      : %s", this->notify_disable_ ? "disable" : "enable");
   LOG_COVER("  ", "Desk", this);
 }
