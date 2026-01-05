@@ -136,16 +136,13 @@ void TimotionDeskControllerComponent::gattc_event_handler(esp_gattc_cb_event_t e
   }
 }
 
-void TimotionDeskControllerComponent::write_value_(uint16_t handle, uint64_t value) {
+void TimotionDeskControllerComponent::write_value_(uint16_t handle, const uint8_t *data, uint16_t len) {
   ESP_LOGD(">>>> ", "write_value_");
-  ESP_LOGD(TAG, "handle, value: %d %llu", handle, value);
-  uint8_t data[8];
-  for (int i = 7; i >= 0; --i) {
-    data[7 - i] = (value >> (8 * i)) & 0xFF;
-  }
+  ESP_LOGD(TAG, "handle: %d, len: %u", handle, len);
 
   esp_err_t status = ::esp_ble_gattc_write_char(this->parent()->get_gattc_if(), this->parent()->get_conn_id(), handle,
-                                                sizeof(data), data, ESP_GATT_WRITE_TYPE_NO_RSP, ESP_GATT_AUTH_REQ_NONE);
+                                                len, const_cast<uint8_t *>(data), ESP_GATT_WRITE_TYPE_NO_RSP,
+                                                ESP_GATT_AUTH_REQ_NONE);
 
   if (status != ESP_OK) {
     this->status_set_warning();
@@ -284,20 +281,24 @@ void TimotionDeskControllerComponent::start_move_torwards_() {
 }
 
 void TimotionDeskControllerComponent::move_torwards_() {
-  //   if (this->use_only_up_down_command_) {
+  // Use the module-style commands captured from the mobile app.
+  // For now, send fixed UP/DOWN frames as observed from the app.
+  static const uint8_t CMD_UP[] = {
+      0x02, 0x03, 0x00, 0x0c, 0x00, 0x08, 0x00, 0x04, 0x00,
+      0x52, 0x0e, 0x00, 0xd9, 0xff, 0x01, 0x60, 0x39};
+  static const uint8_t CMD_DOWN[] = {
+      0x02, 0x03, 0x00, 0x0c, 0x00, 0x08, 0x00, 0x04, 0x00,
+      0x52, 0x0e, 0x00, 0xd9, 0xff, 0x02, 0x60, 0x3a};
+
   if (this->current_operation == cover::COVER_OPERATION_OPENING) {
-    //   this->write_value_(this->control_handle_, 0x47);
-    this->write_value_(this->control_handle_, 0xdd00710000000576);
+    this->write_value_(this->control_handle_, CMD_UP, sizeof(CMD_UP));
   } else if (this->current_operation == cover::COVER_OPERATION_CLOSING) {
-    this->write_value_(this->control_handle_, 0xdd00720000000577);
+    this->write_value_(this->control_handle_, CMD_DOWN, sizeof(CMD_DOWN));
   }
-  //   } else {
-  //     this->write_value_(this->input_handle_, transform_position_to_height(this->position_target_));
-  //   }
 }
 
 void TimotionDeskControllerComponent::stop_move_() {
-  this->write_value_(this->control_handle_, 0xdd00700000000575); // not needed?
+  // No explicit STOP command captured; rely on idle/target logic.
   //   if (false == this->use_only_up_down_command_) {
   //     this->write_value_(this->input_handle_, 0x8001);
   //   }

@@ -59,7 +59,7 @@ class TimotionDeskControllerComponent : public Component, public cover::Cover, p
   bool notify_disable_ = true;
   int not_moving_loop_ = 0;
 
-  void write_value_(uint16_t handle, uint64_t value);
+  void write_value_(uint16_t handle, const uint8_t *data, uint16_t len);
   void read_value_(uint16_t handle);
   void publish_cover_state_(uint8_t *value, uint16_t value_len);
   void move_desk_();
