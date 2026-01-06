@@ -15,9 +15,25 @@ static const float DESK_MIN_HEIGHT = 71;
 static const float DESK_MAX_HEIGHT = 130;
 
 static float transform_height_to_position(float height) {
-  return (height - DESK_MIN_HEIGHT) / (DESK_MAX_HEIGHT - DESK_MIN_HEIGHT);
+  // Map absolute height (cm) to a 0.0–1.0 cover position.
+  // 0.0 = DESK_MIN_HEIGHT (fully down / closed)
+  // 1.0 = DESK_MAX_HEIGHT (fully up / open)
+  float pos = (height - DESK_MIN_HEIGHT) / (DESK_MAX_HEIGHT - DESK_MIN_HEIGHT);
+  if (pos < 0.0f)
+    pos = 0.0f;
+  if (pos > 1.0f)
+    pos = 1.0f;
+  return pos;
 }
-static float transform_position_to_height(float position) { return position * DESK_MAX_HEIGHT; }
+
+static float transform_position_to_height(float position) {
+  // Inverse of transform_height_to_position.
+  if (position < 0.0f)
+    position = 0.0f;
+  if (position > 1.0f)
+    position = 1.0f;
+  return DESK_MIN_HEIGHT + position * (DESK_MAX_HEIGHT - DESK_MIN_HEIGHT);
+}
 
 void TimotionDeskControllerComponent::loop() {}
 
@@ -171,34 +187,37 @@ cover::CoverTraits TimotionDeskControllerComponent::get_traits() {
 }
 
 void TimotionDeskControllerComponent::publish_cover_state_(uint8_t *value, uint16_t value_len) {
-  std::vector<uint8_t> x(value, value + value_len);
-  
-  // Only process frames that indicate the desk is actively moving.
-  // According to your capture:
-  //   x[1] == 0x01 -> moving, x[1] == 0x02 -> idle
-  if (value_len < 8 || x[1] != 0x01) {
+  // Timotion "simple" notification format as observed from the working
+  // ble_client sensors in the example YAML:
+  //   x[1] : motion/state (65 = down, 66 = up, otherwise idle)
+  //   x[3] : current height (cm)
+  if (value_len < 4) {
     return;
   }
 
-  // Height is encoded in millimetres in x[6:7]; divide by 10 to get cm.
-  uint16_t height = (((uint16_t) x[6] << 8) | x[7]) / 10;
-  // Direction/status byte: 0x65 (101) = down, 0x55 (85) = up, 0x05 (5) = idle.
-  uint16_t speed = x[4];
+  std::vector<uint8_t> x(value, value + value_len);
 
-  if (this->lastHeight == height && this->lastSpeed == speed)
+  uint16_t speed_raw = x[1];
+  uint16_t height = x[3];
+
+  if (this->lastHeight == height && this->lastSpeed == speed_raw)
     return;
 
   this->lastHeight = height;
-  this->lastSpeed = speed;
+  this->lastSpeed = speed_raw;
 
-  float position = transform_height_to_position((float) height);
-  ESP_LOGCONFIG(TAG, "publish %d %d %f %f", speed, height, position, this->position);
+  float position = transform_height_to_position(static_cast<float>(height));
+  ESP_LOGCONFIG(TAG, "publish speed=%d height=%d pos=%f target=%f", speed_raw, height, position,
+                this->position_target_);
 
-  if (speed == 101) {           // 0x65: moving down
+  if (speed_raw == 65) {
+    // Moving down
     this->current_operation = cover::COVER_OPERATION_CLOSING;
-  } else if (speed == 85) {     // 0x55: moving up
+  } else if (speed_raw == 66) {
+    // Moving up
     this->current_operation = cover::COVER_OPERATION_OPENING;
-  } else if (speed == 5) {      // 0x05: idle
+  } else {
+    // Idle or unknown
     this->current_operation = cover::COVER_OPERATION_IDLE;
   }
 
